@@ -46,7 +46,8 @@ _msc_resolve() {
 
     [[ -f "$ios_lib" ]] || { _msc_fail "missing $ios_lib"; return 1; }
     have="$(shasum -a 256 "$ios_lib" | cut -d' ' -f1)"
-    [[ "$have" == "$ios_lib_sha" ]] ||
+    # fork: also the copy BCD ipa 712 ships (same 4.0.1 converter, ad-hoc signed by BCD's build)
+    [[ "$have" == "$ios_lib_sha" || "$have" == "0d1539d7158b3337607cef6702cdc228ec8ff4122f51d1f5643b72b6593516f1" ]] ||
         { _msc_fail "$ios_lib hash mismatch (expected $ios_lib_sha, found $have)"; return 1; }
     MSC_LIB_IOS="$ios_lib"
 

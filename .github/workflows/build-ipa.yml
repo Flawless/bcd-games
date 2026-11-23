@@ -3451,7 +3451,12 @@ jobs:
       # would build the stub that draws nothing in any D3D12 game, so fail instead.
       - name: Locate Metal Shader Converter headers
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # fork: Apple's iOS converter dylib comes from the draft release msc-private (collaborators only), never the tree
+          gh release download msc-private -R "$GITHUB_REPOSITORY" -p libmetalirconverter.dylib -D app/Madeira/d3d12 --clobber ||
+            echo "::warning::msc-private draft release unreachable"
           INC="$GITHUB_WORKSPACE/madeira-d3d12/third_party/metal-shader-converter/include"
           if ! bash -c 'source build/madeira-d3d12/deps.sh'; then
             # fork: the iOS converter dylib is not in the public tree (Apple licence); headers are vendored. D3D12 only.
