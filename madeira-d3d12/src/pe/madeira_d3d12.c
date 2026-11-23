@@ -1168,6 +1168,33 @@ static int mad_rp_drop_dual_source(struct WMTRenderPipelineInfo *rp) {
     }
     return changed;
 }
+/* madeira-bcd: Metal asserts, instead of returning an error, on a SRC1 factor outside colour target 0 and on dual-source blending
+ * with more than one colour target ("Dual source blending is used in combination with multiple render targets"); the assertion
+ * stops the thread that builds the pipeline (Cyberpunk 2077 2.5 froze entering V's apartment). D3D12 ignores the factors of a
+ * target that does not blend, so those become ONE/ZERO; a pipeline that still mixes SRC1 with more targets loses the SRC1 factors,
+ * as mad_rp_drop_dual_source does after Metal's error. */
+static int mad_factor_is_src1(enum WMTBlendFactor f) {
+    return f == WMTBlendFactorSource1Color || f == WMTBlendFactorSource1Alpha ||
+           f == WMTBlendFactorOneMinusSource1Color || f == WMTBlendFactorOneMinusSource1Alpha;
+}
+static int mad_rp_fit_dual_source(struct WMTRenderPipelineInfo *rp) {
+    unsigned i, targets = 0, src1_rt0 = 0, src1_other = 0;
+    for (i = 0; i < 8; i++) {
+        struct WMTColorAttachmentBlendInfo *c = &rp->colors[i];
+        unsigned src1;
+        if (c->pixel_format == WMTPixelFormatInvalid) continue;
+        targets++;
+        if (!c->blending_enabled) {
+            c->src_rgb_blend_factor = c->src_alpha_blend_factor = WMTBlendFactorOne;
+            c->dst_rgb_blend_factor = c->dst_alpha_blend_factor = WMTBlendFactorZero;
+            continue;
+        }
+        src1 = mad_factor_is_src1(c->src_rgb_blend_factor) || mad_factor_is_src1(c->dst_rgb_blend_factor) ||
+               mad_factor_is_src1(c->src_alpha_blend_factor) || mad_factor_is_src1(c->dst_alpha_blend_factor);
+        if (src1) { if (i) src1_other = 1; else src1_rt0 = 1; }
+    }
+    return (src1_other || (src1_rt0 && targets > 1)) && mad_rp_drop_dual_source(rp);
+}
 /* The pipeline as Metal builds it; one second try without the dual-source factors after that one refusal (see above). The first
  * refusal is logged here; err holds the second one's, or nothing when it worked. */
 static obj_handle_t mad_new_render_pipeline(obj_handle_t dev, struct WMTRenderPipelineInfo *rp, const struct WMTVertexDescriptorInfo *vd,
@@ -20230,6 +20257,12 @@ static HRESULT device_CreateGraphicsPipelineState_impl(ID3D12Device *This,
                          (unsigned)b->BlendEnable, (unsigned)b->SrcBlend, (unsigned)b->SrcBlendAlpha, (unsigned)b->DestBlend, (unsigned)b->DestBlendAlpha,
                          (unsigned)b->BlendOp, (unsigned)b->BlendOpAlpha, (unsigned)b->RenderTargetWriteMask);
         }
+    }
+    if (mad_rp_fit_dual_source(&rp)) {
+        static LONG said;
+        if (InterlockedIncrement(&said) <= 8)
+            d3d12_log("[madeira-d3d12] dual-source blend dropped for pipeline: SRC1 factors with more than colour target 0 (%u targets)\n",
+                      (unsigned)desc->NumRenderTargets);
     }
     rp.depth_pixel_format = WMTPixelFormatInvalid;
     rp.stencil_pixel_format = WMTPixelFormatInvalid;
