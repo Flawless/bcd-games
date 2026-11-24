@@ -5934,6 +5934,17 @@ jobs:
 
       # Round 624 (agent E2 S3): the step that builds the opt-in DLLs may fail without failing the build; a DLL a game list or an
       # auto-tune rule names in env.MADEIRA_OPTIN_DLLS (Glyphica's kernelbase-optin.dll, build 624) must not go missing silently.
+      # fork: an opt-in DLL that failed to build here comes from BCD ipa 712 (draft release msc-private)
+      - name: Fill opt-in DLLs this fork could not build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for d in dxcompiler-optin.dll opengl32-optin.dll; do
+            [ -f "app/Madeira/arm64ec-windows/$d" ] && continue
+            gh release download msc-private -R "$GITHUB_REPOSITORY" -p "$d" -D app/Madeira/arm64ec-windows &&
+              echo "::warning::$d taken from BCD ipa 712"
+          done
+
       - name: Verify the opt-in DLLs the lists and rules name
         run: python3 tools/check-optin-dlls-shipped.py app/Madeira/arm64ec-windows
 
