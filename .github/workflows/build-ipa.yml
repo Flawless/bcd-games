@@ -6912,9 +6912,17 @@ jobs:
       # anyone; the only copy of a build is the signed IPA in the owner's
       # private R2 bucket (the OTA step above). If that step did not succeed,
       # the build fails here instead of keeping the IPA somewhere public.
+      # fork: no OTA secrets; the unsigned IPA goes to the draft release msc-private (collaborators only), never an artifact
+      - name: Keep the unsigned IPA in the private draft release
+        id: draftipa
+        if: steps.ota.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload msc-private -R "$GITHUB_REPOSITORY" build-out/Madeira-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa --clobber
+
       - name: Check the IPA reached the private bucket
         continue-on-error: true
-        if: steps.ota.outcome != 'success'
+        if: steps.ota.outcome != 'success' && steps.draftipa.outcome != 'success'
         run: |
           echo "::error::OTA signing/upload did not succeed: this build's IPA was not kept anywhere (no GitHub artifact by design)"
           exit 1
